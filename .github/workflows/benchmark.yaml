@@ -3,6 +3,9 @@ on:
   push: {}
   workflow_dispatch: {}
 
+env:
+  WARPBUILD_API_DOMAIN: https://api.dev.warpbuild.dev
+
 permissions:
   contents: read
   id-token: write
@@ -24,7 +27,7 @@ jobs:
 
   build-with-warpbuild-docker-builders:
     name: Build with WarpBuild Docker Builders
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: warpdev-ubuntu-latest-x64-4x
     steps:
       - uses: actions/checkout@v4
         with:

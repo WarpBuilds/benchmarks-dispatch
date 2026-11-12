@@ -1,0 +1,104 @@
+name: Compare Runners
+
+on:
+  workflow_dispatch:
+    inputs:
+      github_runner:
+        description: GitHub-hosted runner label
+        default: ubuntu-latest
+        required: true
+        type: string
+
+      warp_runner:
+        description: WarpBuild runner label
+        default: warp-ubuntu-latest-x64-4x
+        required: true
+        type: string
+
+      cmd:
+        description: Command to run
+        default: echo "hello from $(uname -a)"
+        required: true
+        type: string
+
+      runs:
+        description: Number of runs per runner
+        default: 1
+        required: true
+        type: number
+
+run-name: ${{ inputs.runs }}x on ${{ inputs.github_runner }} vs ${{ inputs.warp_runner }}
+
+jobs:
+  gen_arr:
+    name: Generate run matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate array
+        id: gen_arr
+        run: |
+          arr="[$(seq 1 ${{ inputs.runs }} | paste -s -d , -)]"
+          echo "arr=$arr" >> $GITHUB_OUTPUT
+
+    outputs:
+      arr: ${{ steps.gen_arr.outputs.arr }}
+
+  run:
+    needs: gen_arr
+    name: "${{ matrix.runs_on }} #${{ matrix.i }}"
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs_on:
+          - ${{ inputs.github_runner }}
+          - ${{ inputs.warp_runner }}
+        i: ${{ fromJson(needs.gen_arr.outputs.arr) }}
+
+    steps:
+      - name: Run command
+        shell: bash
+        env:
+          CMD: ${{ inputs.cmd }}
+        run: |
+          set +e
+          printf '%s\n' "$CMD" > cmd_script
+          chmod +x cmd_script
+
+          SECONDS=0
+          bash ./cmd_script 2>&1 | tee cmd_output
+          EXIT_CODE=${PIPESTATUS[0]}
+          DURATION=$SECONDS
+
+          OUTPUT_SIZE=$(wc -c < cmd_output)
+
+          {
+            echo "## \`${{ matrix.runs_on }}\` — run #${{ matrix.i }}"
+            echo ""
+            echo "**Command:**"
+            echo ""
+            echo '```bash'
+            cat cmd_script
+            echo '```'
+            echo ""
+            echo "- **Exit code:** \`$EXIT_CODE\`"
+            echo "- **Duration:** \`${DURATION}s\`"
+            echo ""
+            if [ "$OUTPUT_SIZE" -lt 600 ]; then
+              echo "**stdout/stderr:**"
+              echo ""
+              echo '```'
+              cat cmd_output
+              echo '```'
+            else
+              echo "<details><summary>stdout/stderr</summary>"
+              echo ""
+              echo '```'
+              cat cmd_output
+              echo '```'
+              echo ""
+              echo "</details>"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+          exit $EXIT_CODE
